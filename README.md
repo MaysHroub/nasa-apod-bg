@@ -11,6 +11,8 @@ The image is scalled properly with no cropping or stretching. It sets the image 
 
 Also, if today's APOD is only a video with no images, it fallsback to a placeholder image. (the script installs the placeholder by itself so you don't need to worry about it)
 
+You can find out more about the API here: [https://github.com/nasa/apod-api](https://github.com/nasa/apod-api)
+
 
 ## Requirements
 
@@ -111,6 +113,7 @@ timedatectl
 <br>
 
 If you are still facing a problem, don't hesitate to *google it*.
+
 
 
 
