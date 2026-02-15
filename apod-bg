@@ -1,0 +1,119 @@
+#!/bin/bash
+
+install_timer() {
+  local script_path=$(realpath "$0")
+  local service_name="apod-bg"
+  local config_dir="$HOME/.config/systemd/user"
+
+  if [ ! -d "$config_dir" ]; then
+    mkdir -p "$config_dir"
+  fi
+
+  # create service file
+  cat >"$config_dir/$service_name.service" <<'EOF'
+[Unit]
+Description=NASA APOD Background Updater
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash SCRIPT_PATH_PLACEHOLDER
+EOF
+
+  # Replace placeholder with actual script path
+  sed -i "s|SCRIPT_PATH_PLACEHOLDER|$script_path|g" "$config_dir/$service_name.service"
+
+  # create timer file
+  # APOD updates at 00:00 UTC-4, we want 1 hour later = 01:00 UTC-4 = 05:00 UTC
+  # convert 05:00 UTC to local time
+  local utc_hour=5
+  local local_hour=$(TZ=UTC date -d "today $utc_hour:00" +%-H)
+
+  cat >"$config_dir/$service_name.timer" <<'EOF'
+[Unit]
+Description=Daily NASA APOD Background Update Timer
+
+[Timer]
+OnCalendar=LOCAL_TIME_PLACEHOLDER:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  sed -i "s/LOCAL_TIME_PLACEHOLDER/$local_hour/g" "$config_dir/$service_name.timer"
+
+  # reload systemd and enable timer
+  systemctl --user daemon-reload
+  systemctl --user enable "$service_name.timer"
+  systemctl --user start "$service_name.timer"
+
+  echo "Systemd timer installed successfully!"
+  echo ""
+  echo "The wallpaper will update daily at $local_hour:00"
+  echo "If your laptop is off, it will run when you next boot up"
+  echo ""
+  echo "Useful commands:"
+  echo "  Check timer status:    systemctl --user status $service_name.timer"
+  echo "  Check service status:  systemctl --user status $service_name.service"
+  echo "  View timer schedule:   systemctl --user list-timers"
+  echo "  Run manually now:      systemctl --user start $service_name.service"
+  echo "  View logs:             journalctl --user -u $service_name.service"
+  echo "  Disable timer:         systemctl --user disable $service_name.timer"
+  echo "  Stop timer:            systemctl --user stop $service_name.timer"
+}
+
+# check if --install-timer flag is passed
+if [[ "$1" == "--install-timer" ]]; then
+  install_timer
+  exit 0
+fi
+
+api_key="DEMO_KEY"
+path="$HOME/apod-images" #use absolute path
+new_img_name='today-nasa-apod.jpg'
+placholder_bg_path="$HOME/apod-images/2025-02-05.png"
+
+if [ ! -d "$path" ]; then
+  mkdir -p "$path"
+fi
+
+# init placeholder background image
+init_placeholder_bg() {
+  local placeholder_url=$(curl -s "https://api.nasa.gov/planetary/apod?api_key=$api_key&date=2025-02-05" | jq -r '.hdurl // .url')
+  if [[ -n "$placeholder_url" && "$placeholder_url" != "null" ]]; then
+    curl -o "$placholder_bg_path" "$placeholder_url"
+  else
+    echo "Warning: Could not download placeholder image" >&2
+  fi
+}
+
+if [ ! -f "$placholder_bg_path" ]; then
+  init_placeholder_bg
+fi
+
+dconf write /org/gnome/desktop/background/picture-options "'scaled'"
+
+json_resp=$(curl -s "https://api.nasa.gov/planetary/apod?api_key=$api_key")
+
+err=$(jq -r '.error // empty' <<<"$json_resp")
+if [[ -n "$err" ]]; then
+  dconf write /org/gnome/desktop/background/picture-uri-dark "'file://$placholder_bg_path'"
+  dconf write /org/gnome/desktop/background/picture-uri "'file://$placholder_bg_path'"
+  exit 1
+fi
+
+media_type=$(jq -r '.media_type' <<<"$json_resp")
+if [[ "$media_type" != "image" ]]; then
+  dconf write /org/gnome/desktop/background/picture-uri-dark "'file://$placholder_bg_path'"
+  dconf write /org/gnome/desktop/background/picture-uri "'file://$placholder_bg_path'"
+  exit 0
+fi
+
+img_url=$(jq -r '.hdurl // .url' <<<"$json_resp")
+curl -o "$path/$new_img_name" "$img_url"
+
+dconf write /org/gnome/desktop/background/picture-uri-dark "'file://$(realpath "$path/$new_img_name")'"
+dconf write /org/gnome/desktop/background/picture-uri "'file://$(realpath "$path/$new_img_name")'"
+
+# dconf write /org/gnome/desktop/background/picture-options "'scaled'"
