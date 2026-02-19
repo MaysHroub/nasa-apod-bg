@@ -89,6 +89,24 @@ if [[ "$1" == "--install-timer" ]]; then
   exit 0
 fi
 
+# display information regarding the script
+if [[ "$1" == "--info" ]]; then
+  echo "apod-bg service:"
+  echo "  - Daily at $local_time (1 hour after NASA updates at 05:00 UTC)"
+  echo "  - When waking from sleep/suspend (if scheduled time was missed)"
+  echo "  - On boot (if laptop was off during scheduled time)"
+  echo ""
+  echo "systemctl commands:"
+  echo "  Check timer status:    systemctl --user status $service_name.timer"
+  echo "  Check service status:  systemctl --user status $service_name.service"
+  echo "  Check resume service:  systemctl --user status $service_name-resume.service"
+  echo "  View timer schedule:   systemctl --user list-timers"
+  echo "  Run manually now:      systemctl --user start $service_name.service"
+  echo "  View logs:             journalctl --user -u $service_name.service"
+  echo "  Disable timer:         systemctl --user disable $service_name.timer"
+  echo "  Stop timer:            systemctl --user stop $service_name.timer"
+  exit 0
+fi
 
 api_key="DEMO_KEY"
 path="$HOME/apod-images" #use absolute path
