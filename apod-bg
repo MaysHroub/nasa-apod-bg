@@ -42,19 +42,40 @@ EOF
 
   sed -i "s/LOCAL_TIME_PLACEHOLDER/$local_time/g" "$config_dir/$service_name.timer"
 
+  # create resume service; runs when waking from sleep
+  cat >"$config_dir/$service_name-resume.service" <<'EOF'
+[Unit]
+Description=NASA APOD Background Updater (on resume from sleep)
+After=suspend.target
+
+[Service]
+Type=oneshot
+ExecStart=SCRIPT_PATH_PLACEHOLDER
+# Add a small delay to ensure network is up
+ExecStartPre=/bin/sleep 30
+
+[Install]
+WantedBy=suspend.target
+EOF
+
+  sed -i "s|SCRIPT_PATH_PLACEHOLDER|$script_path|g" "$config_dir/$service_name-resume.service"
+
   # reload systemd and enable timer
   systemctl --user daemon-reload
   systemctl --user enable "$service_name.timer"
   systemctl --user start "$service_name.timer"
+  systemctl --user enable "$service_name-resume.service"
 
   echo "Systemd timer installed successfully!"
   echo ""
-  echo "The wallpaper will update daily at $local_time"
-  echo "If your laptop is off, it will run when you next boot up"
+  echo "  - Daily at $local_time (1 hour after NASA updates at 05:00 UTC)"
+  echo "  - When waking from sleep/suspend (if scheduled time was missed)"
+  echo "  - On boot (if laptop was off during scheduled time)"
   echo ""
   echo "Useful commands:"
   echo "  Check timer status:    systemctl --user status $service_name.timer"
   echo "  Check service status:  systemctl --user status $service_name.service"
+  echo "  Check resume service:  systemctl --user status $service_name-resume.service"
   echo "  View timer schedule:   systemctl --user list-timers"
   echo "  Run manually now:      systemctl --user start $service_name.service"
   echo "  View logs:             journalctl --user -u $service_name.service"
