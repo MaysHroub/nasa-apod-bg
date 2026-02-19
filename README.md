@@ -53,7 +53,7 @@ chmod +x apod-bg
 4. **Edit the script and add your API key:**
 ```bash
 vim apod-bg
-# Replace the api_key value on line 72
+# Replace the api_key value
 ```
 
 5. **Install the systemd timer:**
@@ -62,6 +62,12 @@ vim apod-bg
 ```
 
 And yeah that's basically it. Enjoy your new wallpapers.
+
+You can also run the script manually to update the wallpaper:
+
+```bash
+./apod-bg
+```
 
 
 ## Checking service info
