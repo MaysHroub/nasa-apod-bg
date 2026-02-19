@@ -5,7 +5,7 @@
 
 I wrote a bash script that automatically downloads and sets NASA's Astronomy Picture of the Day (APOD) as your desktop wallpaper. A nice tool for space lovers.
 
-The script runs automatically via `systemd` timer after 1 hour of uploading the image (or video) by NASA; the actual hour depends on your local time. If the script misses the execution time (because the laptop (or PC) is off), `systemd` runs the script on next boot with a random delay up to 300 seconds.
+The script runs automatically via `systemd` timer after 1 hour of uploading the image (or video) by NASA; the actual hour depends on your local time. If the script misses the execution time (because the laptop is on sleep or shutdown), `systemd` runs the script on next boot with a random delay up to 300 seconds.
 
 The image is scalled properly with no cropping or stretching. It sets the image as your wallpaper using `dconf` command.
 
@@ -63,6 +63,14 @@ vim apod-bg
 
 And yeah that's basically it. Enjoy your new wallpapers.
 
+
+## Checking service info
+
+You can use `--info` flag to check service information with `systemctl` command.
+
+```bash
+./apod-bg --info
+```
 
 ## Managing the Timer
 ```bash
