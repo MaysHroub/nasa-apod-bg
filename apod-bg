@@ -98,11 +98,14 @@ esac
 # ---------------------------------------------------------------------------
 
 path="$HOME/apod-images" # use absolute path
-new_img_name="today-nasa-apod.jpg"
-img_path="$path/$new_img_name"
 placeholder_bg_path="$path/placeholder.jpg"
 
 mkdir -p "$path"
+
+# true if at least one previously downloaded APOD image exists
+have_image() {
+  compgen -G "$path/apod-*.jpg" >/dev/null
+}
 
 set_bg() {
   local uri
@@ -140,7 +143,7 @@ json_resp=$(curl -fsS --max-time 30 "$API_URL")
 
 if [[ -z "$json_resp" ]] || ! jq -e 'type == "array" and length > 0' <<<"$json_resp" >/dev/null 2>&1; then
   echo "failed to fetch apod feed"
-  if [ -f "$img_path" ]; then
+  if have_image; then
     echo "keeping current wallpaper"
   else
     echo "no previous image found; using placeholder if available"
@@ -155,7 +158,7 @@ today_date=$(TZ=America/New_York date +%Y-%m-%d)
 
 # if the feed hasn't published today's entry yet, keep current wallpaper
 if [[ "$apod_date" != "$today_date" ]]; then
-  if [ -f "$img_path" ]; then
+  if have_image; then
     echo "Feed not updated yet; keep current wallpaper"
   else
     echo "Feed not updated yet and no previous image found; using placeholder as wallpaper"
@@ -179,19 +182,23 @@ if [[ -z "$img_url" ]]; then
   exit 1
 fi
 
+# date-stamped name: the wallpaper path changes daily, so GNOME reloads it
+img_path="$path/apod-$apod_date.jpg"
+
 # download to a temp file first so a failed download never clobbers the old image
 if curl -fsSL --max-time 120 -o "$img_path.tmp" "$img_url"; then
   mv "$img_path.tmp" "$img_path"
   set_bg "$img_path"
+  # remove previous days' images
+  find "$path" -name 'apod-*.jpg' ! -name "apod-$apod_date.jpg" -delete
   echo "✔ wallpaper is successfully updated"
 else
   rm -f "$img_path.tmp"
   echo "failed to download image"
-  if [ -f "$img_path" ]; then
+  if have_image; then
     echo "keeping current wallpaper"
   else
     use_placeholder
   fi
   exit 1
 fi
-
