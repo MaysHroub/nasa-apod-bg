@@ -1,38 +1,55 @@
 #!/bin/bash
+# Sets the GNOME wallpaper to NASA's Astronomy Picture of the Day.
+# Uses the new NASA Science feed (no API key needed).
+
+API_URL="https://science.nasa.gov/wp-json/wp/v2/apod-basic"
+SERVICE_NAME="apod-bg"
+
+# APOD publishes around 05:00 UTC; run 1 hour later, converted to local time
+LOCAL_TIME=$(date -d '06:00 UTC today' +%H:%M)
+
+print_info() {
+  echo "  - Daily at $LOCAL_TIME (1 hour after NASA updates at 05:00 UTC)"
+  echo "  - When waking from sleep/suspend (if scheduled time was missed)"
+  echo "  - On boot (if laptop was off during scheduled time)"
+  echo ""
+  echo "Useful commands:"
+  echo "  Check timer status:    systemctl --user status $SERVICE_NAME.timer"
+  echo "  Check service status:  systemctl --user status $SERVICE_NAME.service"
+  echo "  Check resume service:  systemctl --user status $SERVICE_NAME-resume.service"
+  echo "  View timer schedule:   systemctl --user list-timers"
+  echo "  Run manually now:      systemctl --user start $SERVICE_NAME.service"
+  echo "  View logs:             journalctl --user -u $SERVICE_NAME.service"
+  echo "  Disable timer:         systemctl --user disable $SERVICE_NAME.timer"
+  echo "  Stop timer:            systemctl --user stop $SERVICE_NAME.timer"
+}
 
 install_timer() {
-  local script_path=$(realpath "$0")
-  local service_name="apod-bg"
+  local script_path
+  script_path=$(realpath "$0")
   local config_dir="$HOME/.config/systemd/user"
 
-  if [ ! -d "$config_dir" ]; then
-    mkdir -p "$config_dir"
-  fi
+  mkdir -p "$config_dir"
 
-  # create service file
-  cat >"$config_dir/$service_name.service" <<'EOF'
+  # service
+  cat >"$config_dir/$SERVICE_NAME.service" <<EOF
 [Unit]
 Description=NASA APOD Background Updater
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash SCRIPT_PATH_PLACEHOLDER
+ExecStart=/bin/bash $script_path
 EOF
 
-  # replace placeholder with actual script path
-  sed -i "s|SCRIPT_PATH_PLACEHOLDER|$script_path|g" "$config_dir/$service_name.service"
-
-  # APOD updates at 05:00 UTC, we want 1 hour later = 06:00 UTC
-  # convert 06:00 UTC to local time
-  local local_time=$(date -d '06:00 UTC today' +%H:%M)
-
-  # create timer file
-  cat >"$config_dir/$service_name.timer" <<'EOF'
+  # timer
+  cat >"$config_dir/$SERVICE_NAME.timer" <<EOF
 [Unit]
 Description=Daily NASA APOD Background Update Timer
 
 [Timer]
-OnCalendar=LOCAL_TIME_PLACEHOLDER
+OnCalendar=$LOCAL_TIME
 Persistent=true
 RandomizedDelaySec=300
 
@@ -40,143 +57,141 @@ RandomizedDelaySec=300
 WantedBy=timers.target
 EOF
 
-  sed -i "s/LOCAL_TIME_PLACEHOLDER/$local_time/g" "$config_dir/$service_name.timer"
-
-  # create resume service; runs when waking from sleep
-  cat >"$config_dir/$service_name-resume.service" <<'EOF'
+  # resume service; runs when waking from sleep
+  cat >"$config_dir/$SERVICE_NAME-resume.service" <<EOF
 [Unit]
 Description=NASA APOD Background Updater (on resume from sleep)
 After=suspend.target
 
 [Service]
 Type=oneshot
-ExecStart=SCRIPT_PATH_PLACEHOLDER
-# Add a small delay to ensure network is up
+# Small delay to ensure network is up
 ExecStartPre=/bin/sleep 30
+ExecStart=/bin/bash $script_path
 
 [Install]
 WantedBy=suspend.target
 EOF
 
-  sed -i "s|SCRIPT_PATH_PLACEHOLDER|$script_path|g" "$config_dir/$service_name-resume.service"
-
-  # reload systemd and enable timer
   systemctl --user daemon-reload
-  systemctl --user enable "$service_name.timer"
-  systemctl --user start "$service_name.timer"
-  systemctl --user enable "$service_name-resume.service"
+  systemctl --user enable "$SERVICE_NAME.timer"
+  systemctl --user start "$SERVICE_NAME.timer"
+  systemctl --user enable "$SERVICE_NAME-resume.service"
 
   echo "Systemd timer installed successfully!"
   echo ""
-  echo "  - Daily at $local_time (1 hour after NASA updates at 05:00 UTC)"
-  echo "  - When waking from sleep/suspend (if scheduled time was missed)"
-  echo "  - On boot (if laptop was off during scheduled time)"
-  echo ""
-  echo "Useful commands:"
-  echo "  Check timer status:    systemctl --user status $service_name.timer"
-  echo "  Check service status:  systemctl --user status $service_name.service"
-  echo "  Check resume service:  systemctl --user status $service_name-resume.service"
-  echo "  View timer schedule:   systemctl --user list-timers"
-  echo "  Run manually now:      systemctl --user start $service_name.service"
-  echo "  View logs:             journalctl --user -u $service_name.service"
-  echo "  Disable timer:         systemctl --user disable $service_name.timer"
-  echo "  Stop timer:            systemctl --user stop $service_name.timer"
+  print_info
 }
 
-# check if --install-timer flag is passed
-if [[ "$1" == "--install-timer" ]]; then
+case "$1" in
+--install-timer)
   install_timer
   exit 0
-fi
-
-# display information regarding the script
-if [[ "$1" == "--info" ]]; then
-  echo "apod-bg service:"
-  echo "  - Daily at $local_time (1 hour after NASA updates at 05:00 UTC)"
-  echo "  - When waking from sleep/suspend (if scheduled time was missed)"
-  echo "  - On boot (if laptop was off during scheduled time)"
-  echo ""
-  echo "systemctl commands:"
-  echo "  Check timer status:    systemctl --user status $service_name.timer"
-  echo "  Check service status:  systemctl --user status $service_name.service"
-  echo "  Check resume service:  systemctl --user status $service_name-resume.service"
-  echo "  View timer schedule:   systemctl --user list-timers"
-  echo "  Run manually now:      systemctl --user start $service_name.service"
-  echo "  View logs:             journalctl --user -u $service_name.service"
-  echo "  Disable timer:         systemctl --user disable $service_name.timer"
-  echo "  Stop timer:            systemctl --user stop $service_name.timer"
+  ;;
+--info)
+  echo "$SERVICE_NAME service:"
+  print_info
   exit 0
-fi
+  ;;
+esac
 
-api_key="DEMO_KEY"
-path="$HOME/apod-images" #use absolute path
-new_img_name='today-nasa-apod.jpg'
-placholder_bg_path="$HOME/apod-images/2025-02-05.png"
+# ---------------------------------------------------------------------------
 
-if [ ! -d "$path" ]; then
-  mkdir -p "$path"
-fi
+path="$HOME/apod-images" # use absolute path
+new_img_name="today-nasa-apod.jpg"
+img_path="$path/$new_img_name"
+placeholder_bg_path="$path/placeholder.jpg"
 
-# init placeholder background image
-init_placeholder_bg() {
-  local placeholder_url=$(curl -s "https://api.nasa.gov/planetary/apod?api_key=$api_key&date=2025-02-05" | jq -r '.hdurl // .url')
-  if [[ -n "$placeholder_url" && "$placeholder_url" != "null" ]]; then
-    curl -s -o "$placholder_bg_path" "$placeholder_url"
+mkdir -p "$path"
+
+set_bg() {
+  local uri
+  uri="file://$(realpath "$1")"
+  dconf write /org/gnome/desktop/background/picture-uri-dark "'$uri'"
+  dconf write /org/gnome/desktop/background/picture-uri "'$uri'"
+}
+
+# Download the newest *image* entry in the feed once, to use as a fallback.
+ensure_placeholder() {
+  [ -f "$placeholder_bg_path" ] && return 0
+  [ -z "$json_resp" ] && return 1
+
+  local url
+  url=$(jq -r 'map(select(.media_type == "image" and .hdurl)) | .[0].hdurl // empty' <<<"$json_resp" 2>/dev/null)
+  if [[ -n "$url" ]] && curl -fsSL --max-time 120 -o "$placeholder_bg_path.tmp" "$url"; then
+    mv "$placeholder_bg_path.tmp" "$placeholder_bg_path"
   else
-    echo "Warning: Could not download placeholder image" >&2
+    rm -f "$placeholder_bg_path.tmp"
+    echo "Warning: could not download placeholder image" >&2
+    return 1
   fi
 }
 
-if [ ! -f "$placholder_bg_path" ]; then
-  init_placeholder_bg
-fi
+use_placeholder() {
+  if ensure_placeholder; then
+    set_bg "$placeholder_bg_path"
+  fi
+}
 
 dconf write /org/gnome/desktop/background/picture-options "'scaled'"
 
-# fetch apod
-json_resp=$(curl -s "https://api.nasa.gov/planetary/apod?api_key=$api_key")
+# fetch apod feed (JSON array, newest entry first)
+json_resp=$(curl -fsS --max-time 30 "$API_URL")
 
-apod_date=$(jq -r '.date' <<<"$json_resp")
-today_date=$(date +%Y-%m-%d)
-
-# if the api hasn't updated yet (still showing old state), keep current wallpaper
-if [[ "$apod_date" != "$today_date" ]]; then
-  if [ -f "$path/$new_img_name" ]; then
-    echo "API not updated yet; keep current wallpaper"
+if [[ -z "$json_resp" ]] || ! jq -e 'type == "array" and length > 0' <<<"$json_resp" >/dev/null 2>&1; then
+  echo "failed to fetch apod feed"
+  if [ -f "$img_path" ]; then
+    echo "keeping current wallpaper"
   else
-    echo "API not updated yet and no previous image found; using placeholder as wallpaper"
-    dconf write /org/gnome/desktop/background/picture-uri-dark "'file://$placholder_bg_path'"
-    dconf write /org/gnome/desktop/background/picture-uri "'file://$placholder_bg_path'"
+    echo "no previous image found; using placeholder if available"
+    use_placeholder
+  fi
+  exit 1
+fi
+
+apod_date=$(jq -r '.[0].date' <<<"$json_resp")
+# APOD dates follow US Eastern time
+today_date=$(TZ=America/New_York date +%Y-%m-%d)
+
+# if the feed hasn't published today's entry yet, keep current wallpaper
+if [[ "$apod_date" != "$today_date" ]]; then
+  if [ -f "$img_path" ]; then
+    echo "Feed not updated yet; keep current wallpaper"
+  else
+    echo "Feed not updated yet and no previous image found; using placeholder as wallpaper"
+    use_placeholder
   fi
   exit 0
 fi
 
-# if there's error, make $err empty
-err=$(jq -r '.error // empty' <<<"$json_resp")
-if [[ -n "$err" ]]; then
-  echo "API error while fetching apod; using placeholder"
-  dconf write /org/gnome/desktop/background/picture-uri-dark "'file://$placholder_bg_path'"
-  dconf write /org/gnome/desktop/background/picture-uri "'file://$placholder_bg_path'"
-  exit 1
-fi
-
-media_type=$(jq -r '.media_type' <<<"$json_resp")
+media_type=$(jq -r '.[0].media_type' <<<"$json_resp")
 if [[ "$media_type" != "image" ]]; then
-  echo "media type is not image; using placeholder"
-  dconf write /org/gnome/desktop/background/picture-uri-dark "'file://$placholder_bg_path'"
-  dconf write /org/gnome/desktop/background/picture-uri "'file://$placholder_bg_path'"
+  echo "media type is '$media_type', not image; using placeholder"
+  use_placeholder
   exit 0
 fi
 
-img_url=$(jq -r '.hdurl // .url' <<<"$json_resp")
-
-if curl -s -o "$path/$new_img_name" "$img_url"; then
-  dconf write /org/gnome/desktop/background/picture-uri-dark "'file://$(realpath "$path/$new_img_name")'"
-  dconf write /org/gnome/desktop/background/picture-uri "'file://$(realpath "$path/$new_img_name")'"
-  echo "✔ wallpaper is successfully updated"
-else
-  echo "failed to download image; using placeholder"
-  dconf write /org/gnome/desktop/background/picture-uri-dark "'file://$placholder_bg_path'"
-  dconf write /org/gnome/desktop/background/picture-uri "'file://$placholder_bg_path'"
+# NOTE: in this feed `.url` is the article page, not the image. Use `.hdurl`.
+img_url=$(jq -r '.[0].hdurl // empty' <<<"$json_resp")
+if [[ -z "$img_url" ]]; then
+  echo "no image url in feed entry; using placeholder"
+  use_placeholder
   exit 1
 fi
+
+# download to a temp file first so a failed download never clobbers the old image
+if curl -fsSL --max-time 120 -o "$img_path.tmp" "$img_url"; then
+  mv "$img_path.tmp" "$img_path"
+  set_bg "$img_path"
+  echo "✔ wallpaper is successfully updated"
+else
+  rm -f "$img_path.tmp"
+  echo "failed to download image"
+  if [ -f "$img_path" ]; then
+    echo "keeping current wallpaper"
+  else
+    use_placeholder
+  fi
+  exit 1
+fi
+
